@@ -54,6 +54,7 @@ def load_kion(path: Path, max_users: int, max_events_per_user: int, seed: int) -
     frame = pd.read_csv(path, usecols=lambda name: name in {
         "user_id", "item_id", "last_watch_dt", "watched_pct"
     })
+    source_rows = len(frame)
     required = {"user_id", "item_id", "last_watch_dt", "watched_pct"}
     missing = required.difference(frame.columns)
     if missing:
@@ -100,6 +101,7 @@ def load_kion(path: Path, max_users: int, max_events_per_user: int, seed: int) -
     )
     frame.attrs["train_cut"] = int(train_cut)
     frame.attrs["valid_cut"] = int(valid_cut)
+    frame.attrs["source_interactions"] = int(source_rows)
     return frame
 
 
@@ -578,6 +580,11 @@ def rollout_metrics(
 
 def write_report(results: dict[str, Any], path: Path, args: argparse.Namespace) -> None:
     base, tuned = results["baseline"]["test"], results["rl"]["test"]
+    reward_test = results["reward_model"]["test"]
+    recall_change = tuned["recall_at_10"] - base["recall_at_10"]
+    ndcg_change = tuned["ndcg_at_10"] - base["ndcg_at_10"]
+    reward_change = tuned["predicted_watch_pct_top1"] - base["predicted_watch_pct_top1"]
+    concentration_change = tuned["top1_item_share"] - base["top1_item_share"]
     report = f"""# Lightweight KION sequential recommendation with RL
 
 ## Method
@@ -598,8 +605,15 @@ rollouts are diagnostic only.
 
 ## Data and protocol
 
-- Input: KION `train.csv`, with `user_id`, `item_id`, `last_watch_dt`,
+- Input: KION `interactions.csv`, with `user_id`, `item_id`, `last_watch_dt`,
   and `watched_pct`.
+- Source: [public KION dataset repository](https://github.com/irsafilo/KION_DATASET).
+- Rows in the downloaded interaction archive: {results["source_interactions"]:,}; sampled
+  interactions: {results["sampled_interactions"]:,}
+  ({results["sampled_interactions"] / results["source_interactions"]:.2%}).
+- The dataset repository describes a broader public release of 5,476,251
+  interactions; this run uses only the smaller `interactions.csv` archive
+  available from its root.
 - Users are sampled deterministically; each user's retained interactions are
   sorted in time and capped. Chronological 80/10/10 partitions use distinct
   timestamp cutoffs. Item vocabulary is built from train only; unseen test
@@ -615,7 +629,7 @@ rollouts are diagnostic only.
 |---|---:|---:|
 | Recall@10 | {base["recall_at_10"]:.5f} | {tuned["recall_at_10"]:.5f} |
 | NDCG@10 | {base["ndcg_at_10"]:.5f} | {tuned["ndcg_at_10"]:.5f} |
-| Catalog coverage@10 | {base["catalog_coverage_at_10"]:.5f} | {tuned["catalog_coverage_at_10"]:.5f} |
+| Sampled train-catalog coverage@10 | {base["catalog_coverage_at_10"]:.5f} | {tuned["catalog_coverage_at_10"]:.5f} |
 | Top-1 item share | {base["top1_item_share"]:.5f} | {tuned["top1_item_share"]:.5f} |
 | Repeat rate@10 | {base["repeat_rate_at_10"]:.5f} | {tuned["repeat_rate_at_10"]:.5f} |
 | Reward-model score of top-1 | {base["predicted_watch_pct_top1"]:.5f} | {tuned["predicted_watch_pct_top1"]:.5f} |
@@ -624,6 +638,18 @@ Reward-model held-out metrics: `{json.dumps(results["reward_model"], ensure_asci
 
 Five-step greedy rollout: baseline `{json.dumps(results["baseline"]["rollout"], ensure_ascii=False)}`;
 RL `{json.dumps(results["rl"]["rollout"], ensure_ascii=False)}`.
+
+## Interpretation
+
+RL raised the reward model's top-1 predicted watch percentage by
+{reward_change:+.4f}, but changed Recall@10 by {recall_change:+.4f} and NDCG@10 by
+{ndcg_change:+.4f}. Top-1 concentration changed by {concentration_change:+.4f}.
+The reward model's test Spearman correlation is only {reward_test["spearman"]:.3f},
+so its ranking signal is weak. This run is a negative result for reward-only
+policy optimization: it obtains higher *predicted* reward while relevance and
+catalog coverage fall and recommendations become more concentrated. The
+five-step rollouts also show rapid repetition, underscoring that generated
+items are not observed user actions.
 
 ## Caveats
 
@@ -638,11 +664,11 @@ An online experiment is required to establish user benefit.
 
 ## Reproduction
 
-Put KION `train.csv` at `data/kion/train.csv`, install
+Put the public KION `interactions.csv` at `data/kion/interactions.csv`, install
 `kion_rl/requirements.txt`, then run:
 
 ```bash
-python kion_rl/run_experiment.py --data data/kion/train.csv
+python kion_rl/run_experiment.py --data data/kion/interactions.csv
 ```
 
 The full metrics are written to `kion_rl/reports/results.json`.
@@ -722,6 +748,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "dataset": "KION",
         "seed": seed,
         "device": str(device),
+        "source_interactions": int(frame.attrs["source_interactions"]),
         "sampled_interactions": int(len(frame)),
         "sampled_users": int(frame.user_id.nunique()),
         "catalog_size": int(n_items),
@@ -752,7 +779,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=Path("data/kion/train.csv"))
+    parser.add_argument("--data", type=Path, default=Path("data/kion/interactions.csv"))
     parser.add_argument("--results", type=Path, default=Path("kion_rl/reports/results.json"))
     parser.add_argument("--report", type=Path, default=Path("kion_rl/reports/experiment.md"))
     parser.add_argument("--max-users", type=int, default=10_000)

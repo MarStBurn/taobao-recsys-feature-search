@@ -7,9 +7,13 @@ in the repository.
 
 ## Data
 
-Download the KION competition data separately and place `train.csv` at
-`data/kion/train.csv`. Required columns are `user_id`, `item_id`,
-`last_watch_dt`, and `watched_pct`. The dataset is not redistributed here.
+Download the public interactions archive from the
+[KION dataset repository](https://github.com/irsafilo/KION_DATASET), extract
+`interactions.csv`, and place it at `data/kion/interactions.csv`. Required
+columns are `user_id`, `item_id`, `last_watch_dt`, and `watched_pct`. Raw data
+is not redistributed in this repository. The root archive used for this quick
+run contains about 1.6 million rows; the repository describes a broader public
+release with 5.48 million interactions.
 
 ## Run
 
@@ -17,7 +21,7 @@ Download the KION competition data separately and place `train.csv` at
 python3 -m venv .venv-kion
 . .venv-kion/bin/activate
 pip install -r kion_rl/requirements.txt
-python kion_rl/run_experiment.py --data data/kion/train.csv
+python kion_rl/run_experiment.py --data data/kion/interactions.csv
 ```
 
 Defaults cap the experiment at 10,000 users and 40 events per user, use a
