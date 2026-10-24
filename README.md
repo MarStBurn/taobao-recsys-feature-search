@@ -1,4 +1,10 @@
-# Taobao UserBehavior: automated RecSys feature search
+# Recommendation system experiments
+
+The repository also contains a lightweight KION sequential-recommendation
+prototype with a small causal Transformer, `watched_pct` reward model, and
+KL-constrained policy-gradient update. See [KION RL experiment](kion_rl/README.md).
+
+## Taobao UserBehavior: automated feature search
 
 The experiment compares LightGBM with a hand-picked set of time windows against
 the same model trained on a larger, automatically enumerated feature set.

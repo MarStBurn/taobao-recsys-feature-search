@@ -3,4 +3,5 @@ __pycache__/
 *.py[cod]
 data/
 reports/results.json
+kion_rl/reports/results.json
 .DS_Store
